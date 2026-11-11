@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "6"
+# ///
 # MAGIC %md
 # MAGIC # 07 · City C — model changes, evaluated honestly
 # MAGIC
@@ -170,7 +174,16 @@ out_cols = ["id", "city", "snapshot_date", "split", "in_evaluation", "name", "ne
 preds = (spark.createDataFrame(cf[out_cols].astype({"accommodates": "float64", "bedrooms": "float64"}))
          .withColumn("run_label", F.lit(RUN_LABEL)).withColumn("model_version", F.lit(new_version))
          .withColumn("scored_at", F.current_timestamp()))
-write_partition(preds, T("gold_predictions"), f"city = '{city}' AND run_label = '{RUN_LABEL}'")
+def align_to_table(sdf, table):
+    """Cast columns to the types the existing table already has, so appends never fail on int vs double."""
+    if not spark.catalog.tableExists(table):
+        return sdf
+    target = {f.name: f.dataType for f in spark.table(table).schema}
+    return sdf.select([F.col(c).cast(target[c]).alias(c) if c in target else F.col(c) for c in sdf.columns])
+
+
+write_partition(align_to_table(preds, T("gold_predictions")), T("gold_predictions"),
+                f"city = '{city}' AND run_label = '{RUN_LABEL}'")
 
 
 def metric_row(label, city_name, eval_set, d, pred, base, version, name):
@@ -195,7 +208,8 @@ rows_ab = [metric_row(RUN_LABEL, c, "test", ab_test[ab_test.city == c],
 
 
 def to_sdf(rows):
-    return spark.createDataFrame(pd.DataFrame(rows)).withColumn("created_at", F.current_timestamp())
+    sdf = spark.createDataFrame(pd.DataFrame(rows)).withColumn("created_at", F.current_timestamp())
+    return align_to_table(sdf, T("gold_model_metrics"))
 
 
 write_partition(to_sdf(rows_c), T("gold_model_metrics"), f"city = '{city}' AND eval_set = 'c_heldout'")
