@@ -4,7 +4,7 @@
 |---|---|---|---|
 | City A (training) | New Orleans, LA | `new-orleans` | 2026-09-16 |
 | City B (training) | Asheville, NC | `asheville` | 2026-09-19 |
-| City C (new client) | Nashville, TN | `nashville` | TODO (week 2) |
+| City C (new client) | Nashville, TN | `nashville` | 2026-09-19 |
 
 Region: **US South**, currency **USD**. Data: [Inside Airbnb](https://insideairbnb.com/get-the-data/) `listings.csv.gz`, CC BY 4.0.
 Runs entirely on Databricks Free Edition (serverless), at no cost.
@@ -46,7 +46,10 @@ notebooks/
   03_gold_city.py      metrics + features + split         (param: city)
   04_train_model.py    baseline, CV model choice, test-set evaluation, UC registration
   05_score_city.py     predictions for any city           (param: city, model_alias, run_label)
+  06_city_c_diagnose.py      city C first-run diagnosis (param: city, run_label)
+  07_city_c_model_change.py  city C model changes, evaluated on held-out 20% (param: city)
 jobs/jobs.yml          Job 1 per-city pipeline, Job 2 week-1 run, Job 3 new city
+jobs/job3_new_city.yml Job 3 for city C (default city = nashville)
 ```
 
 ## How to run
@@ -83,12 +86,12 @@ Week 2 only: create **Job 3** and run it with `city=nashville`, `model_alias=wee
   
 | | MAE (USD) |
 |---|---|
-| Baseline on city C | TODO |
-| Model on A + B (test) | TODO |
-| Model on city C, first run (`week1`) | TODO |
+| Baseline on city C | 152 |
+| Model on A + B (test) | 82 |
+| Model on city C, first run (`week1`) | 134 |
 | Model on city C, after changes | TODO |
 
-**First run:** did it run? what failed? what came out?
+**First run:** Job 3 (`airbnb_new_city`, `run_label = c_first_run`) completed without errors: the unchanged pipeline (bronze → silver → gold) and scoring with the frozen model `week1` (v3) both succeeded. Nashville snapshot 2026-09-19: 10,133 listings with the same 90 columns as A and B; no rows lost between bronze and silver; 8.0% without price (A: 14.8%, B: 10.5%); 13.1% with 30+ minimum nights (A: 40.8%, B: 8.6%); no unknown room types; price p99.5 = $2,710 (A and B: about $2,000). Evaluated on all 9,319 priced listings: model MAE $134, baseline $152 (A + B test: $82). Median price $297 vs $206 in the A + B test set. No pipeline fixes were needed.
 
 | # | Change | Kind (pipeline fix / model change) | Reason |
 |---|---|---|---|
