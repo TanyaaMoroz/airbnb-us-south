@@ -155,7 +155,7 @@ The error for a listing of a given size is similar across cities — large listi
 
 ## Dashboard and Genie
 
-- AI/BI dashboard: TODO link — three pages (city overview, cross-city comparison, model incl. Nashville). Queries: `docs/dashboard_queries.sql`.
+- AI/BI dashboard: [link](https://dbc-58a977cc-a9a9.cloud.databricks.com/dashboardsv3/01f1de099d101a12917f41bc93d72c36/published?o=7474650486058939). Queries: `docs/dashboard_queries.sql`.
 - Genie agent: TODO link — setup and example questions: `docs/genie_setup.md`.
 
 ## Presentation
