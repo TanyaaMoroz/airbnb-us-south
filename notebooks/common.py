@@ -65,8 +65,8 @@ FEATURES_NUM = [
     "minimum_nights",
     # amenities
     "amenities_count", "has_pool", "has_hot_tub", "has_free_parking", "has_washer", "has_ac",
-    # host
-    "host_is_superhost", "host_years", "calculated_host_listings_count", "instant_bookable",
+    # host_years (from host_since) and instant_bookable are empty in these Inside Airbnb snapshots
+    "host_is_superhost", "calculated_host_listings_count",
     # reviews (review_scores_value is excluded on purpose: see leakage review)
     "number_of_reviews", "number_of_reviews_ltm", "review_scores_rating",
     "review_scores_location", "review_scores_cleanliness", "days_since_last_review",
