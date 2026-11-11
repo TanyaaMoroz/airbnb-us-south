@@ -1,0 +1,3532 @@
+{
+  "datasets": [
+    {
+      "name": "predictions_eval",
+      "displayName": "Evaluated listings (predictions)",
+      "queryLines": [
+        "SELECT\n",
+        "  name,\n",
+        "  city,\n",
+        "  city_name,\n",
+        "  split,\n",
+        "  neighbourhood,\n",
+        "  room_type,\n",
+        "  accommodates,\n",
+        "  price,\n",
+        "  price_flag,\n",
+        "  stay_type,\n",
+        "  predicted_price,\n",
+        "  error,\n",
+        "  abs_error,\n",
+        "  run_label,\n",
+        "  rn_under,\n",
+        "  rn_over\n",
+        "FROM\n",
+        "  (\n",
+        "    SELECT\n",
+        "      name,\n",
+        "      city,\n",
+        "      split,\n",
+        "      neighbourhood,\n",
+        "      room_type,\n",
+        "      accommodates,\n",
+        "      price,\n",
+        "      price_flag,\n",
+        "      CASE\n",
+        "        WHEN is_monthly = 1 THEN '30+ nights'\n",
+        "        ELSE 'nightly'\n",
+        "      END AS stay_type,\n",
+        "      predicted_price,\n",
+        "      error,\n",
+        "      abs_error,\n",
+        "      run_label,\n",
+        "      CASE\n",
+        "        WHEN city = 'new-orleans' THEN 'New Orleans'\n",
+        "        WHEN city = 'asheville' THEN 'Asheville'\n",
+        "        ELSE 'Nashville'\n",
+        "      END AS city_name,\n",
+        "      ROW_NUMBER() OVER (PARTITION BY city, run_label ORDER BY error ASC, id) AS rn_under,\n",
+        "      ROW_NUMBER() OVER (PARTITION BY city, run_label ORDER BY error DESC, id) AS rn_over\n",
+        "    FROM\n",
+        "      gold_predictions\n",
+        "    WHERE\n",
+        "      in_evaluation = 1  )\n",
+        "  t\n",
+        "ORDER BY\n",
+        "  error ASC"
+      ],
+      "catalog": "workspace",
+      "schema": "airbnb"
+    },
+    {
+      "name": "price_by_guests",
+      "displayName": "Median price by guests (A+B)",
+      "config": {
+        "source": "SELECT city,\n       LEAST(accommodates, 12) AS guests,\n       percentile(price, 0.5) AS median_price\nFROM workspace.airbnb.silver_listings WHERE price IS NOT NULL AND city IN ('new-orleans', 'asheville') GROUP BY city, LEAST(accommodates, 12)\n",
+        "measures": [
+          {
+            "name": "median_price",
+            "expr": "MAX(median_price)"
+          }
+        ],
+        "version": "1.1",
+        "comment": "Median nightly price by number of guests (accommodates capped at 12), priced listings only",
+        "dimensions": [
+          {
+            "name": "city",
+            "expr": "city"
+          },
+          {
+            "name": "city_name",
+            "expr": "CASE WHEN city = 'new-orleans' THEN 'New Orleans' WHEN city = 'asheville' THEN 'Asheville' ELSE 'Nashville' END"
+          },
+          {
+            "name": "guests",
+            "expr": "guests"
+          }
+        ]
+      }
+    },
+    {
+      "name": "model_metrics",
+      "displayName": "Model metrics (MAE by city and eval set)",
+      "config": {
+        "source": "workspace.airbnb.gold_model_metrics",
+        "measures": [
+          {
+            "name": "n",
+            "expr": "MAX(n)"
+          },
+          {
+            "name": "n_ok",
+            "expr": "MAX(n_ok)"
+          },
+          {
+            "name": "mae_model",
+            "expr": "MAX(mae_model)"
+          },
+          {
+            "name": "mae_baseline",
+            "expr": "MAX(mae_baseline)"
+          },
+          {
+            "name": "median_ae_model",
+            "expr": "MAX(median_ae_model)"
+          },
+          {
+            "name": "median_price",
+            "expr": "MAX(median_price)"
+          }
+        ],
+        "version": "1.1",
+        "comment": "MAE of model vs baseline per city, eval set and run label",
+        "dimensions": [
+          {
+            "name": "city",
+            "expr": "city"
+          },
+          {
+            "name": "city_name",
+            "expr": "CASE WHEN city = 'all_train' THEN 'A+B (all train)' WHEN city = 'new-orleans' THEN 'New Orleans' WHEN city = 'asheville' THEN 'Asheville' ELSE 'Nashville' END"
+          },
+          {
+            "name": "eval_set",
+            "expr": "eval_set"
+          },
+          {
+            "name": "run_label",
+            "expr": "run_label"
+          },
+          {
+            "name": "model_name",
+            "expr": "model_name"
+          }
+        ]
+      }
+    },
+    {
+      "name": "city_metrics",
+      "displayName": "City metrics (New Orleans + Asheville)",
+      "config": {
+        "source": "workspace.airbnb.gold_city_metrics",
+        "measures": [
+          {
+            "name": "listings",
+            "expr": "MAX(listings)"
+          },
+          {
+            "name": "hosts",
+            "expr": "MAX(hosts)"
+          },
+          {
+            "name": "listings_with_price",
+            "expr": "MAX(listings_with_price)"
+          },
+          {
+            "name": "median_price",
+            "expr": "MAX(median_price)"
+          },
+          {
+            "name": "avg_availability_365",
+            "expr": "MAX(avg_availability_365)"
+          },
+          {
+            "name": "median_review_score",
+            "expr": "MAX(median_review_score)"
+          },
+          {
+            "name": "share_entire_home",
+            "expr": "MAX(share_entire_home)"
+          },
+          {
+            "name": "share_multi_listing_hosts",
+            "expr": "MAX(share_multi_listing_hosts)"
+          },
+          {
+            "name": "share_monthly",
+            "expr": "MAX(share_monthly)"
+          },
+          {
+            "name": "share_no_reviews",
+            "expr": "MAX(share_no_reviews)"
+          }
+        ],
+        "filter": "city IN ('new-orleans', 'asheville')",
+        "version": "1.1",
+        "comment": "City-level Airbnb metrics for the two training cities, latest snapshot per city",
+        "dimensions": [
+          {
+            "name": "city",
+            "expr": "city"
+          },
+          {
+            "name": "city_name",
+            "expr": "CASE WHEN city = 'new-orleans' THEN 'New Orleans' WHEN city = 'asheville' THEN 'Asheville' ELSE 'Nashville' END"
+          }
+        ]
+      }
+    },
+    {
+      "name": "room_type_mix",
+      "displayName": "Room type mix (New Orleans + Asheville)",
+      "config": {
+        "source": "workspace.airbnb.gold_room_type_mix",
+        "measures": [
+          {
+            "name": "listings",
+            "expr": "SUM(listings)"
+          },
+          {
+            "name": "median_price",
+            "expr": "MAX(median_price)"
+          },
+          {
+            "name": "share",
+            "expr": "MAX(share)"
+          }
+        ],
+        "filter": "city IN ('new-orleans', 'asheville')",
+        "version": "1.1",
+        "comment": "Listings, median price and share per room type for the two training cities",
+        "dimensions": [
+          {
+            "name": "city",
+            "expr": "city"
+          },
+          {
+            "name": "city_name",
+            "expr": "CASE WHEN city = 'new-orleans' THEN 'New Orleans' WHEN city = 'asheville' THEN 'Asheville' ELSE 'Nashville' END"
+          },
+          {
+            "name": "room_type",
+            "expr": "room_type"
+          }
+        ]
+      }
+    },
+    {
+      "name": "neighbourhood_metrics",
+      "displayName": "Neighbourhood metrics (New Orleans + Asheville)",
+      "config": {
+        "source": "workspace.airbnb.gold_neighbourhood_metrics",
+        "measures": [
+          {
+            "name": "listings",
+            "expr": "MAX(listings)"
+          },
+          {
+            "name": "median_price",
+            "expr": "MAX(median_price)"
+          },
+          {
+            "name": "avg_review_score",
+            "expr": "MAX(avg_review_score)"
+          },
+          {
+            "name": "share_entire_home",
+            "expr": "MAX(share_entire_home)"
+          },
+          {
+            "name": "avg_availability_365",
+            "expr": "MAX(avg_availability_365)"
+          }
+        ],
+        "filter": "city IN ('new-orleans', 'asheville')",
+        "version": "1.1",
+        "comment": "Neighbourhood-level metrics; Asheville neighbourhoods are ZIP codes",
+        "dimensions": [
+          {
+            "name": "city",
+            "expr": "city"
+          },
+          {
+            "name": "city_name",
+            "expr": "CASE WHEN city = 'new-orleans' THEN 'New Orleans' WHEN city = 'asheville' THEN 'Asheville' ELSE 'Nashville' END"
+          },
+          {
+            "name": "neighbourhood",
+            "expr": "neighbourhood"
+          },
+          {
+            "name": "latitude",
+            "expr": "latitude"
+          },
+          {
+            "name": "longitude",
+            "expr": "longitude"
+          },
+          {
+            "name": "listings_n",
+            "expr": "listings"
+          }
+        ]
+      }
+    },
+    {
+      "name": "city_diff",
+      "displayName": "Asheville minus New Orleans (diffs)",
+      "config": {
+        "source": "WITH m AS (\n  SELECT city, median_price, share_entire_home, share_monthly\n  FROM workspace.airbnb.gold_city_metrics\n  WHERE city IN ('new-orleans', 'asheville')\n), v AS (\n  SELECT 'Median price' AS metric, 1 AS sort_order,\n    MAX(CASE WHEN city = 'new-orleans' THEN median_price END) AS no_val,\n    MAX(CASE WHEN city = 'asheville' THEN median_price END) AS ash_val\n  FROM m\n  UNION ALL\n  SELECT 'Share of entire homes', 2,\n    MAX(CASE WHEN city = 'new-orleans' THEN 100 * share_entire_home END),\n    MAX(CASE WHEN city = 'asheville' THEN 100 * share_entire_home END)\n  FROM m\n  UNION ALL\n  SELECT 'Share of 30+ night listings', 3,\n    MAX(CASE WHEN city = 'new-orleans' THEN 100 * share_monthly END),\n    MAX(CASE WHEN city = 'asheville' THEN 100 * share_monthly END)\n  FROM m\n) SELECT metric, sort_order,\n  CASE WHEN sort_order = 1\n    THEN concat('$', cast(round(no_val, 0) AS string))\n    ELSE concat(cast(round(no_val, 1) AS string), '%') END AS new_orleans,\n  CASE WHEN sort_order = 1\n    THEN concat('$', cast(round(ash_val, 0) AS string))\n    ELSE concat(cast(round(ash_val, 1) AS string), '%') END AS asheville,\n  CASE WHEN sort_order = 1\n    THEN concat(iff(ash_val - no_val >= 0, '+', '-'), '$', cast(round(abs(ash_val - no_val), 0) AS string))\n    ELSE concat(iff(ash_val - no_val >= 0, '+', '-'), cast(round(abs(ash_val - no_val), 1) AS string), ' pp') END AS difference\nFROM v\n",
+        "measures": [
+          {
+            "name": "new_orleans",
+            "expr": "MAX(new_orleans)"
+          },
+          {
+            "name": "asheville",
+            "expr": "MAX(asheville)"
+          },
+          {
+            "name": "difference",
+            "expr": "MAX(difference)"
+          }
+        ],
+        "version": "1.1",
+        "comment": "Asheville minus New Orleans for median price, entire homes share and 30+ night share, formatted for display",
+        "dimensions": [
+          {
+            "name": "metric",
+            "expr": "metric"
+          },
+          {
+            "name": "sort_order",
+            "expr": "sort_order"
+          }
+        ]
+      }
+    },
+    {
+      "name": "pred_nbhd_mae",
+      "displayName": "MAE by neighbourhood (evaluated listings)",
+      "config": {
+        "source": "SELECT city, run_label, neighbourhood, city_name, n, abs_error_sum, error_sum FROM (\n  SELECT city, run_label, neighbourhood,\n    CASE WHEN city = 'new-orleans' THEN 'New Orleans' WHEN city = 'asheville' THEN 'Asheville' ELSE 'Nashville' END AS city_name,\n    COUNT(*) AS n,\n    SUM(abs_error) AS abs_error_sum,\n    SUM(error) AS error_sum\n  FROM workspace.airbnb.gold_predictions\n  WHERE in_evaluation = 1\n  GROUP BY city, run_label, neighbourhood\n)\n",
+        "measures": [
+          {
+            "name": "mae",
+            "expr": "SUM(abs_error_sum) / SUM(n)"
+          },
+          {
+            "name": "mean_error",
+            "expr": "SUM(error_sum) / SUM(n)"
+          },
+          {
+            "name": "evaluated_listings",
+            "expr": "SUM(n)"
+          }
+        ],
+        "version": "1.1",
+        "comment": "Per neighbourhood (per run and city) evaluated-listing counts and error sums; n_dim supports the at-least-10 filter",
+        "dimensions": [
+          {
+            "name": "city",
+            "expr": "city"
+          },
+          {
+            "name": "city_name",
+            "expr": "city_name"
+          },
+          {
+            "name": "run_label",
+            "expr": "run_label"
+          },
+          {
+            "name": "neighbourhood",
+            "expr": "neighbourhood"
+          },
+          {
+            "name": "n_dim",
+            "expr": "n"
+          }
+        ]
+      }
+    },
+    {
+      "name": "c_error_breakdown",
+      "displayName": "Nashville vs A+B error breakdown",
+      "config": {
+        "source": "workspace.airbnb.gold_c_error_breakdown",
+        "measures": [
+          {
+            "name": "mae",
+            "expr": "MAX(mae)"
+          },
+          {
+            "name": "mean_error",
+            "expr": "MAX(mean_error)"
+          },
+          {
+            "name": "median_price",
+            "expr": "MAX(median_price)"
+          }
+        ],
+        "version": "1.1",
+        "comment": "Error of the new city (Nashville, first run) vs the A+B test set by dimension bucket",
+        "dimensions": [
+          {
+            "name": "dimension",
+            "expr": "dimension"
+          },
+          {
+            "name": "bucket",
+            "expr": "bucket"
+          },
+          {
+            "name": "group",
+            "expr": "group"
+          },
+          {
+            "name": "group_name",
+            "expr": "CASE WHEN `group` = 'nashville' THEN 'Nashville (first run)' ELSE 'A+B test set' END"
+          },
+          {
+            "name": "run_label",
+            "expr": "run_label"
+          },
+          {
+            "name": "n_dim",
+            "expr": "n"
+          }
+        ]
+      }
+    },
+    {
+      "name": "four_numbers",
+      "displayName": "The four numbers (headline MAEs)",
+      "config": {
+        "source": "SELECT '1. Baseline MAE — Nashville, all priced (first run)' AS metric, 1 AS order_n, mae_baseline AS value FROM workspace.airbnb.gold_model_metrics WHERE city = 'nashville' AND run_label = 'c_first_run' AND eval_set = 'all_priced' UNION ALL SELECT '2. Model MAE — New Orleans + Asheville, week-1 test', 2, mae_model FROM workspace.airbnb.gold_model_metrics WHERE city = 'all_train' AND run_label = 'week1' AND eval_set = 'test' UNION ALL SELECT '3. Model MAE — Nashville, first run, held-out 20%', 3, mae_model FROM workspace.airbnb.gold_model_metrics WHERE city = 'nashville' AND run_label = 'c_first_run' AND eval_set = 'c_heldout' UNION ALL SELECT '4. Model MAE — Nashville after changes, held-out 20%', 4, mae_model FROM workspace.airbnb.gold_model_metrics WHERE city = 'nashville' AND run_label = 'c_after_fix' AND eval_set = 'c_heldout'\n",
+        "measures": [
+          {
+            "name": "value",
+            "expr": "MAX(value)"
+          }
+        ],
+        "version": "1.1",
+        "comment": "The four headline MAE numbers in fixed order; bars with no data yet are absent",
+        "dimensions": [
+          {
+            "name": "metric",
+            "expr": "metric"
+          },
+          {
+            "name": "order_n",
+            "expr": "order_n"
+          }
+        ]
+      }
+    },
+    {
+      "name": "headline_mae",
+      "displayName": "Headline MAE numbers (one row)",
+      "config": {
+        "version": "1.1",
+        "source": "SELECT\n  MAX(CASE WHEN city = 'nashville' AND run_label = 'c_first_run' AND eval_set = 'all_priced' THEN mae_baseline END) AS baseline_mae,\n  MAX(CASE WHEN city = 'all_train' AND run_label = 'week1' AND eval_set = 'test' THEN mae_model END) AS ab_test_mae,\n  MAX(CASE WHEN city = 'nashville' AND run_label = 'c_first_run' AND eval_set = 'c_heldout' THEN mae_model END) AS c_first_run_mae,\n  MAX(CASE WHEN city = 'nashville' AND run_label = 'c_after_fix' AND eval_set = 'c_heldout' THEN mae_model END) AS c_after_fix_mae\nFROM workspace.airbnb.gold_model_metrics\n",
+        "comment": "The four headline MAE numbers as four measures in a single row",
+        "measures": [
+          {
+            "name": "baseline_mae",
+            "expr": "MAX(baseline_mae)"
+          },
+          {
+            "name": "ab_test_mae",
+            "expr": "MAX(ab_test_mae)"
+          },
+          {
+            "name": "c_first_run_mae",
+            "expr": "MAX(c_first_run_mae)"
+          },
+          {
+            "name": "c_after_fix_mae",
+            "expr": "MAX(c_after_fix_mae)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "predictions_eval_over",
+      "displayName": "Evaluated listings (predictions, error descending)",
+      "queryLines": [
+        "SELECT\n",
+        "  name,\n",
+        "  city,\n",
+        "  city_name,\n",
+        "  split,\n",
+        "  neighbourhood,\n",
+        "  room_type,\n",
+        "  accommodates,\n",
+        "  price,\n",
+        "  price_flag,\n",
+        "  stay_type,\n",
+        "  predicted_price,\n",
+        "  error,\n",
+        "  abs_error,\n",
+        "  run_label,\n",
+        "  rn_under,\n",
+        "  rn_over\n",
+        "FROM\n",
+        "  (\n",
+        "    SELECT\n",
+        "      name,\n",
+        "      city,\n",
+        "      split,\n",
+        "      neighbourhood,\n",
+        "      room_type,\n",
+        "      accommodates,\n",
+        "      price,\n",
+        "      price_flag,\n",
+        "      CASE\n",
+        "        WHEN is_monthly = 1 THEN '30+ nights'\n",
+        "        ELSE 'nightly'\n",
+        "      END AS stay_type,\n",
+        "      predicted_price,\n",
+        "      error,\n",
+        "      abs_error,\n",
+        "      run_label,\n",
+        "      CASE\n",
+        "        WHEN city = 'new-orleans' THEN 'New Orleans'\n",
+        "        WHEN city = 'asheville' THEN 'Asheville'\n",
+        "        ELSE 'Nashville'\n",
+        "      END AS city_name,\n",
+        "      ROW_NUMBER() OVER (PARTITION BY city, run_label ORDER BY error ASC, id) AS rn_under,\n",
+        "      ROW_NUMBER() OVER (PARTITION BY city, run_label ORDER BY error DESC, id) AS rn_over\n",
+        "    FROM\n",
+        "      workspace.airbnb.gold_predictions\n",
+        "    WHERE\n",
+        "      in_evaluation = 1\n",
+        "  ) t\n",
+        "ORDER BY\n",
+        "  error DESC"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "88eddf5f",
+      "displayName": "City overview",
+      "layout": [
+        {
+          "widget": {
+            "name": "page1_title",
+            "queries": [
+              {
+                "name": "text_q_dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0abbb210e8b10d42836c6129cc",
+                "query": {
+                  "datasetName": "city_metrics",
+                  "fields": [
+                    {
+                      "name": "listings",
+                      "expression": "MEASURE(`listings`)"
+                    },
+                    {
+                      "name": "median_price",
+                      "expression": "MEASURE(`median_price`)"
+                    },
+                    {
+                      "name": "share_monthly",
+                      "expression": "MEASURE(`share_monthly`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "verticalAlign": "center",
+              "version": 1,
+              "widgetType": "text",
+              "encodings": {
+                "text": {
+                  "fields": [
+                    {
+                      "queryName": "text_q_dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0abbb210e8b10d42836c6129cc",
+                      "fieldName": "listings",
+                      "format": {
+                        "abbreviation": "none",
+                        "decimalPlaces": {
+                          "places": 0,
+                          "type": "max"
+                        },
+                        "type": "number-plain"
+                      }
+                    },
+                    {
+                      "queryName": "text_q_dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0abbb210e8b10d42836c6129cc",
+                      "fieldName": "median_price",
+                      "format": {
+                        "abbreviation": "none",
+                        "currencyCode": "USD",
+                        "decimalPlaces": {
+                          "places": 0,
+                          "type": "max"
+                        },
+                        "type": "number-currency"
+                      }
+                    },
+                    {
+                      "queryName": "text_q_dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0abbb210e8b10d42836c6129cc",
+                      "fieldName": "share_monthly",
+                      "format": {
+                        "decimalPlaces": {
+                          "places": 1,
+                          "type": "max"
+                        },
+                        "type": "number-percent"
+                      }
+                    }
+                  ],
+                  "lines": [
+                    "## {{ filter:city_filter }}: {{ field:listings }} listings at a median {{ field:median_price }} a night; {{ field:share_monthly }} are 30+ night rentals"
+                  ]
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 9,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "ctr_listings",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "city_metrics",
+                  "fields": [
+                    {
+                      "name": "measure(listings)",
+                      "expression": "MEASURE(`listings`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Listings"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(listings)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "ctr_hosts",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "city_metrics",
+                  "fields": [
+                    {
+                      "name": "measure(hosts)",
+                      "expression": "MEASURE(`hosts`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Hosts"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(hosts)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "ctr_median_price",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "city_metrics",
+                  "fields": [
+                    {
+                      "name": "measure(median_price)",
+                      "expression": "MEASURE(`median_price`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Median price"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(median_price)",
+                  "format": {
+                    "abbreviation": "none",
+                    "currencyCode": "USD",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-currency"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 2,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "ctr_availability",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "city_metrics",
+                  "fields": [
+                    {
+                      "name": "measure(avg_availability_365)",
+                      "expression": "MEASURE(`avg_availability_365`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Avg days available per year"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(avg_availability_365)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 2,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "ctr_review_score",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "city_metrics",
+                  "fields": [
+                    {
+                      "name": "measure(median_review_score)",
+                      "expression": "MEASURE(`median_review_score`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Median review score"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(median_review_score)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 2,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "ctr_entire_home",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "city_metrics",
+                  "fields": [
+                    {
+                      "name": "measure(share_entire_home)",
+                      "expression": "MEASURE(`share_entire_home`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Entire homes"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(share_entire_home)",
+                  "format": {
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-percent"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 4,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "ctr_monthly",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "city_metrics",
+                  "fields": [
+                    {
+                      "name": "measure(share_monthly)",
+                      "expression": "MEASURE(`share_monthly`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "30+ night rentals"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(share_monthly)",
+                  "format": {
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-percent"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 4,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "ctr_no_reviews",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "city_metrics",
+                  "fields": [
+                    {
+                      "name": "measure(share_no_reviews)",
+                      "expression": "MEASURE(`share_no_reviews`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Listings with no reviews"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(share_no_reviews)",
+                  "format": {
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-percent"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 4,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "room_type_mix_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "room_type_mix",
+                  "fields": [
+                    {
+                      "name": "measure(median_price)",
+                      "expression": "MEASURE(`median_price`)"
+                    },
+                    {
+                      "name": "measure(listings)",
+                      "expression": "MEASURE(`listings`)"
+                    },
+                    {
+                      "name": "measure(share)",
+                      "expression": "MEASURE(`share`)"
+                    },
+                    {
+                      "name": "room_type",
+                      "expression": "`room_type`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "Room-type mix",
+                "description": "Share of listings by room type, sorted by share. Hover a bar for the median nightly price (USD) and listing count."
+              },
+              "version": 3,
+              "mark": {
+                "colors": [
+                  "#2375A8"
+                ]
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "measure(share)",
+                  "format": {
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-percent"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "room_type",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "x-reversed"
+                    }
+                  }
+                },
+                "extra": [
+                  {
+                    "fieldName": "measure(median_price)",
+                    "format": {
+                      "abbreviation": "none",
+                      "currencyCode": "USD",
+                      "decimalPlaces": {
+                        "places": 0,
+                        "type": "max"
+                      },
+                      "type": "number-currency"
+                    }
+                  },
+                  {
+                    "fieldName": "measure(listings)",
+                    "format": {
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "places": 0,
+                        "type": "max"
+                      },
+                      "type": "number-plain"
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "nbhd_price_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "neighbourhood_metrics",
+                  "fields": [
+                    {
+                      "name": "measure(listings)",
+                      "expression": "MEASURE(`listings`)"
+                    },
+                    {
+                      "name": "measure(median_price)",
+                      "expression": "MEASURE(`median_price`)"
+                    },
+                    {
+                      "name": "neighbourhood",
+                      "expression": "`neighbourhood`"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`listings_n` >= 20"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "Top neighbourhoods by median price",
+                "description": "Top 15 neighbourhoods with at least 20 listings, sorted by median nightly price. Asheville neighbourhoods are ZIP codes."
+              },
+              "version": 3,
+              "mark": {
+                "colors": [
+                  "#2375A8"
+                ]
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "measure(median_price)",
+                  "format": {
+                    "abbreviation": "none",
+                    "currencyCode": "USD",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-currency"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "neighbourhood",
+                  "scale": {
+                    "categorySize": {
+                      "number": 15,
+                      "type": "number-of-categories"
+                    },
+                    "type": "categorical",
+                    "sort": {
+                      "by": "x-reversed"
+                    }
+                  }
+                },
+                "extra": [
+                  {
+                    "fieldName": "measure(listings)",
+                    "format": {
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "places": 0,
+                        "type": "max"
+                      },
+                      "type": "number-plain"
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 6,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "neighbourhood_map",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "neighbourhood_metrics",
+                  "fields": [
+                    {
+                      "name": "measure(median_price)",
+                      "expression": "MEASURE(`median_price`)"
+                    },
+                    {
+                      "name": "latitude",
+                      "expression": "`latitude`"
+                    },
+                    {
+                      "name": "longitude",
+                      "expression": "`longitude`"
+                    },
+                    {
+                      "name": "measure(listings)",
+                      "expression": "MEASURE(`listings`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "Neighbourhood map",
+                "description": "One point per neighbourhood (Asheville: ZIP codes). Point size = number of listings; colour = median nightly price (USD)."
+              },
+              "version": 2,
+              "widgetType": "symbol-map",
+              "encodings": {
+                "coordinates": {
+                  "coordinateType": "longitude-latitude",
+                  "latitude": {
+                    "fieldName": "latitude"
+                  },
+                  "longitude": {
+                    "fieldName": "longitude"
+                  }
+                },
+                "color": {
+                  "fieldName": "measure(median_price)",
+                  "format": {
+                    "abbreviation": "none",
+                    "currencyCode": "USD",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-currency"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "size": {
+                  "fieldName": "measure(listings)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 13,
+            "width": 12,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "city_filter",
+            "queries": [
+              {
+                "name": "dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0abbb210e8b10d42836c6129cc_city_name",
+                "query": {
+                  "datasetName": "city_metrics",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "city_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0abbe11576abef7165fff17ced_city_name",
+                "query": {
+                  "datasetName": "room_type_mix",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "city_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0abc1f112081c67c30be5e1dd7_city_name",
+                "query": {
+                  "datasetName": "neighbourhood_metrics",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "city_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "scale": {
+                "sort": {
+                  "by": "natural-order"
+                },
+                "type": "categorical"
+              },
+              "selection": {
+                "defaultSelection": {
+                  "values": {
+                    "dataType": "STRING",
+                    "values": [
+                      {
+                        "value": "New Orleans"
+                      }
+                    ]
+                  }
+                }
+              },
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "City"
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "city_name",
+                    "queryName": "dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0abbb210e8b10d42836c6129cc_city_name"
+                  },
+                  {
+                    "fieldName": "city_name",
+                    "queryName": "dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0abbe11576abef7165fff17ced_city_name"
+                  },
+                  {
+                    "fieldName": "city_name",
+                    "queryName": "dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0abc1f112081c67c30be5e1dd7_city_name"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 0,
+            "width": 3,
+            "height": 2
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "cross_city",
+      "displayName": "Cross-city: New Orleans vs Asheville",
+      "layout": [
+        {
+          "widget": {
+            "name": "price_dollars",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "city_metrics",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "measure(median_price)",
+                      "expression": "MEASURE(`median_price`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "Median price (USD)",
+                "description": "Median nightly price per city, bars from zero."
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "city_name",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "New Orleans",
+                        "Asheville"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "measure(median_price)",
+                  "format": {
+                    "abbreviation": "none",
+                    "currencyCode": "USD",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-currency"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "city_name",
+                  "scale": {
+                    "mappings": [
+                      {
+                        "color": "#2375A8",
+                        "value": "New Orleans"
+                      },
+                      {
+                        "color": "#52A870",
+                        "value": "Asheville"
+                      }
+                    ],
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "days_available",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "city_metrics",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "measure(avg_availability_365)",
+                      "expression": "MEASURE(`avg_availability_365`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "Avg days available per year",
+                "description": "Average days available per year (out of 365)."
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "city_name",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "New Orleans",
+                        "Asheville"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "measure(avg_availability_365)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "city_name",
+                  "scale": {
+                    "mappings": [
+                      {
+                        "color": "#2375A8",
+                        "value": "New Orleans"
+                      },
+                      {
+                        "color": "#52A870",
+                        "value": "Asheville"
+                      }
+                    ],
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "review_score",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "city_metrics",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "measure(median_review_score)",
+                      "expression": "MEASURE(`median_review_score`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "Median review score",
+                "description": "Median review score (0–5 scale)."
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "city_name",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "New Orleans",
+                        "Asheville"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "measure(median_review_score)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 2,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "city_name",
+                  "scale": {
+                    "mappings": [
+                      {
+                        "color": "#2375A8",
+                        "value": "New Orleans"
+                      },
+                      {
+                        "color": "#52A870",
+                        "value": "Asheville"
+                      }
+                    ],
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 2,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "shares",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "city_metrics",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "measure(share_entire_home)",
+                      "expression": "MEASURE(`share_entire_home`)"
+                    },
+                    {
+                      "name": "measure(share_monthly)",
+                      "expression": "MEASURE(`share_monthly`)"
+                    },
+                    {
+                      "name": "measure(share_no_reviews)",
+                      "expression": "MEASURE(`share_no_reviews`)"
+                    },
+                    {
+                      "name": "measure(share_multi_listing_hosts)",
+                      "expression": "MEASURE(`share_multi_listing_hosts`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "Key shares",
+                "description": "Shares of listings per city, grouped side by side, bars from zero."
+              },
+              "version": 3,
+              "mark": {
+                "colors": [
+                  "#2375A8",
+                  "#C85070",
+                  "#52A870",
+                  "#C89930"
+                ],
+                "layout": "group"
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "city_name",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "New Orleans",
+                        "Asheville"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fields": [
+                    {
+                      "fieldName": "measure(share_entire_home)",
+                      "displayName": "% entire homes"
+                    },
+                    {
+                      "fieldName": "measure(share_monthly)",
+                      "displayName": "% 30+ nights"
+                    },
+                    {
+                      "fieldName": "measure(share_no_reviews)",
+                      "displayName": "% no reviews"
+                    },
+                    {
+                      "fieldName": "measure(share_multi_listing_hosts)",
+                      "displayName": "% multi-listing hosts"
+                    }
+                  ],
+                  "format": {
+                    "decimalPlaces": {
+                      "places": 1,
+                      "type": "max"
+                    },
+                    "type": "number-percent"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 2,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "room_type_price",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "room_type_mix",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "room_type",
+                      "expression": "`room_type`"
+                    },
+                    {
+                      "name": "measure(median_price)",
+                      "expression": "MEASURE(`median_price`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "Median price by room type",
+                "description": "Median nightly price by room type, grouped city bars side by side, sorted by price."
+              },
+              "version": 3,
+              "mark": {
+                "layout": "group"
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "room_type",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "measure(median_price)",
+                  "format": {
+                    "abbreviation": "none",
+                    "currencyCode": "USD",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-currency"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "city_name",
+                  "scale": {
+                    "mappings": [
+                      {
+                        "color": "#2375A8",
+                        "value": "New Orleans"
+                      },
+                      {
+                        "color": "#52A870",
+                        "value": "Asheville"
+                      }
+                    ],
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "room_type_stacked",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "room_type_mix",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "room_type",
+                      "expression": "`room_type`"
+                    },
+                    {
+                      "name": "measure(listings)",
+                      "expression": "MEASURE(`listings`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "Room-type share per city",
+                "description": "100% stacked: each city's room-type composition, each bar sums to 100%."
+              },
+              "version": 3,
+              "mark": {
+                "layout": "percent-stack"
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "room_type",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "measure(listings)",
+                  "format": {
+                    "abbreviation": "none",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-plain"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "city_name",
+                  "scale": {
+                    "mappings": [
+                      {
+                        "color": "#2375A8",
+                        "value": "New Orleans"
+                      },
+                      {
+                        "color": "#52A870",
+                        "value": "Asheville"
+                      }
+                    ],
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 8,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "price_by_guests_line",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "price_by_guests",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "guests",
+                      "expression": "`guests`"
+                    },
+                    {
+                      "name": "measure(median_price)",
+                      "expression": "MEASURE(`median_price`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "Median price by number of guests",
+                "description": "Median nightly price at the same listing size (guests capped at 12+, priced listings only). The gap shows the price difference at equal size."
+              },
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "guests",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "measure(median_price)",
+                  "format": {
+                    "abbreviation": "none",
+                    "currencyCode": "USD",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-currency"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "city_name",
+                  "scale": {
+                    "mappings": [
+                      {
+                        "color": "#2375A8",
+                        "value": "New Orleans"
+                      },
+                      {
+                        "color": "#52A870",
+                        "value": "Asheville"
+                      }
+                    ],
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 15,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "diff_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "city_diff",
+                  "fields": [
+                    {
+                      "name": "metric",
+                      "expression": "`metric`"
+                    },
+                    {
+                      "name": "measure(new_orleans)",
+                      "expression": "MEASURE(`new_orleans`)"
+                    },
+                    {
+                      "name": "measure(asheville)",
+                      "expression": "MEASURE(`asheville`)"
+                    },
+                    {
+                      "name": "measure(difference)",
+                      "expression": "MEASURE(`difference`)"
+                    },
+                    {
+                      "name": "sort_order",
+                      "expression": "`sort_order`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "Asheville minus New Orleans",
+                "description": "Asheville minus New Orleans. For shares, 'pp' = percentage points."
+              },
+              "rowsPerPage": 10,
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "metric"
+                  },
+                  {
+                    "fieldName": "measure(new_orleans)",
+                    "displayName": "New Orleans"
+                  },
+                  {
+                    "fieldName": "measure(asheville)",
+                    "displayName": "Asheville"
+                  },
+                  {
+                    "fieldName": "measure(difference)",
+                    "displayName": "Asheville − New Orleans"
+                  },
+                  {
+                    "fieldName": "sort_order"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 15,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "page2_title",
+            "spec": {
+              "verticalAlign": "center",
+              "version": 1,
+              "widgetType": "text",
+              "encodings": {
+                "text": {
+                  "fields": [],
+                  "lines": [
+                    "## Asheville runs about $28 a night more than New Orleans ($225 vs $197 median) — and the markets differ in kind: only 8.6% of Asheville listings are 30+ night rentals vs 40.8% in New Orleans, while at equal listing size the price gap narrows."
+                  ]
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 2
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "model_page",
+      "displayName": "Model: predicted vs actual price",
+      "layout": [
+        {
+          "widget": {
+            "name": "page3_title",
+            "queries": [
+              {
+                "name": "text_q_dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0be42911c8bef9a21ef2935e5e",
+                "query": {
+                  "datasetName": "headline_mae",
+                  "fields": [
+                    {
+                      "name": "mae_baseline",
+                      "expression": "MEASURE(`baseline_mae`)"
+                    },
+                    {
+                      "name": "mae_ab",
+                      "expression": "MEASURE(`ab_test_mae`)"
+                    },
+                    {
+                      "name": "mae_first",
+                      "expression": "MEASURE(`c_first_run_mae`)"
+                    },
+                    {
+                      "name": "mae_fix",
+                      "expression": "MEASURE(`c_after_fix_mae`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "verticalAlign": "center",
+              "version": 1,
+              "widgetType": "text",
+              "encodings": {
+                "text": {
+                  "fields": [
+                    {
+                      "queryName": "text_q_dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0be42911c8bef9a21ef2935e5e",
+                      "fieldName": "mae_baseline",
+                      "format": {
+                        "abbreviation": "none",
+                        "currencyCode": "USD",
+                        "decimalPlaces": {
+                          "places": 0,
+                          "type": "max"
+                        },
+                        "type": "number-currency"
+                      }
+                    },
+                    {
+                      "queryName": "text_q_dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0be42911c8bef9a21ef2935e5e",
+                      "fieldName": "mae_ab",
+                      "format": {
+                        "abbreviation": "none",
+                        "currencyCode": "USD",
+                        "decimalPlaces": {
+                          "places": 0,
+                          "type": "max"
+                        },
+                        "type": "number-currency"
+                      }
+                    },
+                    {
+                      "queryName": "text_q_dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0be42911c8bef9a21ef2935e5e",
+                      "fieldName": "mae_first",
+                      "format": {
+                        "abbreviation": "none",
+                        "currencyCode": "USD",
+                        "decimalPlaces": {
+                          "places": 0,
+                          "type": "max"
+                        },
+                        "type": "number-currency"
+                      }
+                    },
+                    {
+                      "queryName": "text_q_dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0be42911c8bef9a21ef2935e5e",
+                      "fieldName": "mae_fix",
+                      "format": {
+                        "abbreviation": "none",
+                        "currencyCode": "USD",
+                        "decimalPlaces": {
+                          "places": 0,
+                          "type": "max"
+                        },
+                        "type": "number-currency"
+                      }
+                    }
+                  ],
+                  "lines": [
+                    "## Scoring Nashville: a naive median-price baseline is off by {{ field:mae_baseline }} per night on all priced listings; the trained model's first run on Nashville's held-out 20% is off by {{ field:mae_first }}, and after changes {{ field:mae_fix }} — versus {{ field:mae_ab }} on the week-1 test set in New Orleans + Asheville."
+                  ]
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "run_filter",
+            "queries": [
+              {
+                "name": "dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0ab85d16ad9ba055574a86009e_run_label",
+                "query": {
+                  "datasetName": "predictions_eval",
+                  "fields": [
+                    {
+                      "name": "run_label",
+                      "expression": "`run_label`"
+                    },
+                    {
+                      "name": "run_label_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0ad7311cd5a8355423160d0566_run_label",
+                "query": {
+                  "datasetName": "pred_nbhd_mae",
+                  "fields": [
+                    {
+                      "name": "run_label",
+                      "expression": "`run_label`"
+                    },
+                    {
+                      "name": "run_label_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0bf27710cd9821cce7ffca2c70_run_label",
+                "query": {
+                  "datasetName": "predictions_eval_over",
+                  "fields": [
+                    {
+                      "name": "run_label",
+                      "expression": "`run_label`"
+                    },
+                    {
+                      "name": "run_label_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "scale": {
+                "sort": {
+                  "by": "custom-order",
+                  "orderedValues": [
+                    "week1",
+                    "c_first_run",
+                    "c_recalibrated",
+                    "c_after_fix"
+                  ]
+                },
+                "type": "categorical"
+              },
+              "selection": {
+                "defaultSelection": {
+                  "values": {
+                    "dataType": "STRING",
+                    "values": [
+                      {
+                        "value": "week1"
+                      }
+                    ]
+                  }
+                }
+              },
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Run",
+                  "fields": []
+                }
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "run_label",
+                    "queryName": "dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0ab85d16ad9ba055574a86009e_run_label"
+                  },
+                  {
+                    "fieldName": "run_label",
+                    "queryName": "dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0ad7311cd5a8355423160d0566_run_label"
+                  },
+                  {
+                    "fieldName": "run_label",
+                    "queryName": "dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0bf27710cd9821cce7ffca2c70_run_label"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 0,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "city_filter_multi",
+            "queries": [
+              {
+                "name": "dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0ab85d16ad9ba055574a86009e_city_name",
+                "query": {
+                  "datasetName": "predictions_eval",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "city_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0ad7311cd5a8355423160d0566_city_name",
+                "query": {
+                  "datasetName": "pred_nbhd_mae",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "city_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0bf27710cd9821cce7ffca2c70_city_name",
+                "query": {
+                  "datasetName": "predictions_eval_over",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "city_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "scale": {
+                "sort": {
+                  "by": "custom-order",
+                  "orderedValues": [
+                    "New Orleans",
+                    "Asheville",
+                    "Nashville"
+                  ]
+                },
+                "type": "categorical"
+              },
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "City",
+                  "fields": []
+                }
+              },
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "city_name",
+                    "queryName": "dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0ab85d16ad9ba055574a86009e_city_name"
+                  },
+                  {
+                    "fieldName": "city_name",
+                    "queryName": "dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0ad7311cd5a8355423160d0566_city_name"
+                  },
+                  {
+                    "fieldName": "city_name",
+                    "queryName": "dashboards/01f1de099d101a12917f41bc93d72c36/datasets/01f1de0bf27710cd9821cce7ffca2c70_city_name"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 0,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "four_numbers_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "four_numbers",
+                  "fields": [
+                    {
+                      "name": "measure(value)",
+                      "expression": "MEASURE(`value`)"
+                    },
+                    {
+                      "name": "metric",
+                      "expression": "`metric`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "The four numbers",
+                "description": "Mean absolute error (MAE) per night in fixed order. Bars with no data yet are simply absent."
+              },
+              "version": 3,
+              "mark": {
+                "colors": [
+                  "#2375A8"
+                ]
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "measure(value)",
+                  "format": {
+                    "abbreviation": "none",
+                    "currencyCode": "USD",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-currency"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "metric",
+                  "scale": {
+                    "categorySize": {
+                      "number": 4,
+                      "type": "number-of-categories"
+                    },
+                    "type": "categorical",
+                    "sort": {
+                      "by": "natural-order"
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 8,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "mae_vs_baseline",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "model_metrics",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "measure(mae_model)",
+                      "expression": "MEASURE(`mae_model`)"
+                    },
+                    {
+                      "name": "measure(mae_baseline)",
+                      "expression": "MEASURE(`mae_baseline`)"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`run_label` IN ('week1')"
+                    },
+                    {
+                      "expression": "`eval_set` IN ('test')"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "Model vs baseline MAE (week 1)",
+                "description": "Week-1 test set: the model's MAE vs the city-median baseline, grouped bars."
+              },
+              "version": 3,
+              "mark": {
+                "colors": [
+                  "#2375A8",
+                  "#9AA5B1"
+                ],
+                "layout": "group"
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "city_name",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "New Orleans",
+                        "Asheville",
+                        "A+B (all train)"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fields": [
+                    {
+                      "fieldName": "measure(mae_model)",
+                      "displayName": "Model MAE"
+                    },
+                    {
+                      "fieldName": "measure(mae_baseline)",
+                      "displayName": "Baseline MAE"
+                    }
+                  ],
+                  "format": {
+                    "abbreviation": "none",
+                    "currencyCode": "USD",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-currency"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 2,
+            "width": 4,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "scatter_pred_actual",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "predictions_eval",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "price",
+                      "expression": "`price`"
+                    },
+                    {
+                      "name": "predicted_price",
+                      "expression": "`predicted_price`"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`price` < 1500"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "Predicted vs actual price",
+                "description": "Each dot is one evaluated listing with a nightly price under $1,500. Dots on the diagonal (actual = predicted) are perfect; far below it = under-predicted, far above = over-predicted."
+              },
+              "version": 3,
+              "widgetType": "scatter",
+              "encodings": {
+                "x": {
+                  "fieldName": "price",
+                  "format": {
+                    "abbreviation": "none",
+                    "currencyCode": "USD",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-currency"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "predicted_price",
+                  "format": {
+                    "abbreviation": "none",
+                    "currencyCode": "USD",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-currency"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "city_name",
+                  "scale": {
+                    "mappings": [
+                      {
+                        "color": "#2375A8",
+                        "value": "New Orleans"
+                      },
+                      {
+                        "color": "#52A870",
+                        "value": "Asheville"
+                      },
+                      {
+                        "color": "#C89930",
+                        "value": "Nashville"
+                      }
+                    ],
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "mae_room_type",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "predictions_eval",
+                  "fields": [
+                    {
+                      "name": "avg(error)",
+                      "expression": "AVG(`error`)"
+                    },
+                    {
+                      "name": "avg(abs_error)",
+                      "expression": "AVG(`abs_error`)"
+                    },
+                    {
+                      "name": "room_type",
+                      "expression": "`room_type`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "MAE by room type",
+                "description": "Mean absolute error by room type, sorted. Hover a bar for the mean signed error (negative = under-predicted on average)."
+              },
+              "version": 3,
+              "mark": {
+                "colors": [
+                  "#2375A8"
+                ]
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "avg(abs_error)",
+                  "format": {
+                    "abbreviation": "none",
+                    "currencyCode": "USD",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-currency"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "room_type",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "x-reversed"
+                    }
+                  }
+                },
+                "extra": [
+                  {
+                    "fieldName": "avg(error)",
+                    "format": {
+                      "abbreviation": "none",
+                      "currencyCode": "USD",
+                      "decimalPlaces": {
+                        "places": 0,
+                        "type": "max"
+                      },
+                      "type": "number-currency"
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 8,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "mae_neighbourhoods",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pred_nbhd_mae",
+                  "fields": [
+                    {
+                      "name": "measure(evaluated_listings)",
+                      "expression": "MEASURE(`evaluated_listings`)"
+                    },
+                    {
+                      "name": "measure(mae)",
+                      "expression": "MEASURE(`mae`)"
+                    },
+                    {
+                      "name": "neighbourhood",
+                      "expression": "`neighbourhood`"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`n_dim` >= 10"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "Top neighbourhoods by MAE",
+                "description": "Top 15 neighbourhoods with at least 10 evaluated listings, sorted by MAE. Hover for evaluated-listing count. Asheville neighbourhoods are ZIP codes."
+              },
+              "version": 3,
+              "mark": {
+                "colors": [
+                  "#2375A8"
+                ]
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "measure(mae)",
+                  "format": {
+                    "abbreviation": "none",
+                    "currencyCode": "USD",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-currency"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "neighbourhood",
+                  "scale": {
+                    "categorySize": {
+                      "number": 15,
+                      "type": "number-of-categories"
+                    },
+                    "type": "categorical",
+                    "sort": {
+                      "by": "x-reversed"
+                    }
+                  }
+                },
+                "extra": [
+                  {
+                    "fieldName": "measure(evaluated_listings)",
+                    "format": {
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "places": 0,
+                        "type": "max"
+                      },
+                      "type": "number-plain"
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 15,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "mae_stay_type",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "predictions_eval",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "stay_type",
+                      "expression": "`stay_type`"
+                    },
+                    {
+                      "name": "avg(abs_error)",
+                      "expression": "AVG(`abs_error`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "MAE: nightly vs 30+ nights",
+                "description": "Mean absolute error for short-stay vs 30+ night listings, per city, grouped bars."
+              },
+              "version": 3,
+              "mark": {
+                "layout": "group"
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "stay_type",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "nightly",
+                        "30+ nights"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(abs_error)",
+                  "format": {
+                    "abbreviation": "none",
+                    "currencyCode": "USD",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-currency"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "city_name",
+                  "scale": {
+                    "mappings": [
+                      {
+                        "color": "#2375A8",
+                        "value": "New Orleans"
+                      },
+                      {
+                        "color": "#52A870",
+                        "value": "Asheville"
+                      },
+                      {
+                        "color": "#C89930",
+                        "value": "Nashville"
+                      }
+                    ],
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 15,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "error_breakdown_facets",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "c_error_breakdown",
+                  "fields": [
+                    {
+                      "name": "group_name",
+                      "expression": "`group_name`"
+                    },
+                    {
+                      "name": "bucket",
+                      "expression": "`bucket`"
+                    },
+                    {
+                      "name": "measure(mae)",
+                      "expression": "MEASURE(`mae`)"
+                    },
+                    {
+                      "name": "dimension",
+                      "expression": "`dimension`"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`n_dim` >= 20"
+                    },
+                    {
+                      "expression": "`run_label` IN ('c_first_run')"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "facet": {
+                "type": "wrap",
+                "fieldName": "dimension",
+                "scale": {
+                  "sort": {
+                    "by": "custom-order",
+                    "orderedValues": [
+                      "price_band",
+                      "accommodates_bucket",
+                      "distance_band",
+                      "room_type",
+                      "monthly_rental",
+                      "property_type_group"
+                    ]
+                  },
+                  "type": "categorical"
+                }
+              },
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "Nashville vs A+B: MAE by segment",
+                "description": "First Nashville run vs the A+B test set, mean absolute error per segment bucket. Only buckets with at least 20 listings in both groups are shown."
+              },
+              "version": 3,
+              "mark": {
+                "layout": "group"
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "bucket",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "<$100",
+                        "$100-199",
+                        "$200-299",
+                        "$300-499",
+                        "$500-999",
+                        "$1000+",
+                        "<2 km",
+                        "2-5 km",
+                        "5-10 km",
+                        "10-20 km",
+                        "20+ km",
+                        "1-2",
+                        "3-4",
+                        "5-6",
+                        "7-8",
+                        "9-12",
+                        "13+",
+                        "nightly",
+                        "short stay",
+                        "30+ nights",
+                        "Entire home/apt",
+                        "Private room",
+                        "Hotel room",
+                        "Shared room",
+                        "common in training",
+                        "rare or unseen"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "measure(mae)",
+                  "format": {
+                    "abbreviation": "none",
+                    "currencyCode": "USD",
+                    "decimalPlaces": {
+                      "places": 0,
+                      "type": "max"
+                    },
+                    "type": "number-currency"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "group_name",
+                  "scale": {
+                    "mappings": [
+                      {
+                        "color": "#C89930",
+                        "value": "Nashville (first run)"
+                      },
+                      {
+                        "color": "#9AA5B1",
+                        "value": "A+B test set"
+                      }
+                    ],
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 30,
+            "width": 12,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "under_predicted_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "predictions_eval",
+                  "fields": [
+                    {
+                      "name": "name",
+                      "expression": "`name`"
+                    },
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "neighbourhood",
+                      "expression": "`neighbourhood`"
+                    },
+                    {
+                      "name": "room_type",
+                      "expression": "`room_type`"
+                    },
+                    {
+                      "name": "accommodates",
+                      "expression": "`accommodates`"
+                    },
+                    {
+                      "name": "price",
+                      "expression": "`price`"
+                    },
+                    {
+                      "name": "predicted_price",
+                      "expression": "`predicted_price`"
+                    },
+                    {
+                      "name": "error",
+                      "expression": "`error`"
+                    },
+                    {
+                      "name": "price_flag",
+                      "expression": "`price_flag`"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`rn_under` <= 15"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "Most under-predicted listings",
+                "description": "Evaluated listings the model under-predicts the most (most negative error), 15 rows, sorted by error."
+              },
+              "rowsPerPage": 15,
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "name",
+                    "useForSearch": true
+                  },
+                  {
+                    "fieldName": "city_name"
+                  },
+                  {
+                    "fieldName": "neighbourhood"
+                  },
+                  {
+                    "fieldName": "room_type"
+                  },
+                  {
+                    "fieldName": "accommodates",
+                    "format": {
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "places": 0,
+                        "type": "max"
+                      },
+                      "type": "number-plain"
+                    },
+                    "displayName": "Guests"
+                  },
+                  {
+                    "fieldName": "price",
+                    "format": {
+                      "abbreviation": "none",
+                      "currencyCode": "USD",
+                      "decimalPlaces": {
+                        "places": 0,
+                        "type": "max"
+                      },
+                      "type": "number-currency"
+                    },
+                    "displayName": "Actual (USD)"
+                  },
+                  {
+                    "fieldName": "predicted_price",
+                    "format": {
+                      "abbreviation": "none",
+                      "currencyCode": "USD",
+                      "decimalPlaces": {
+                        "places": 0,
+                        "type": "max"
+                      },
+                      "type": "number-currency"
+                    },
+                    "displayName": "Predicted (USD)"
+                  },
+                  {
+                    "fieldName": "error",
+                    "format": {
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "places": 0,
+                        "type": "max"
+                      },
+                      "type": "number-plain"
+                    },
+                    "displayName": "Error (USD)"
+                  },
+                  {
+                    "fieldName": "price_flag"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 22,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "over_predicted_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "predictions_eval_over",
+                  "fields": [
+                    {
+                      "name": "name",
+                      "expression": "`name`"
+                    },
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "neighbourhood",
+                      "expression": "`neighbourhood`"
+                    },
+                    {
+                      "name": "room_type",
+                      "expression": "`room_type`"
+                    },
+                    {
+                      "name": "accommodates",
+                      "expression": "`accommodates`"
+                    },
+                    {
+                      "name": "price",
+                      "expression": "`price`"
+                    },
+                    {
+                      "name": "predicted_price",
+                      "expression": "`predicted_price`"
+                    },
+                    {
+                      "name": "error",
+                      "expression": "`error`"
+                    },
+                    {
+                      "name": "price_flag",
+                      "expression": "`price_flag`"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`rn_over` <= 15"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showDescription": true,
+                "showTitle": true,
+                "title": "Most over-predicted listings",
+                "description": "Evaluated listings the model over-predicts the most (largest positive error), 15 rows, sorted by error."
+              },
+              "rowsPerPage": 15,
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "name",
+                    "useForSearch": true
+                  },
+                  {
+                    "fieldName": "city_name"
+                  },
+                  {
+                    "fieldName": "neighbourhood"
+                  },
+                  {
+                    "fieldName": "room_type"
+                  },
+                  {
+                    "fieldName": "accommodates",
+                    "format": {
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "places": 0,
+                        "type": "max"
+                      },
+                      "type": "number-plain"
+                    },
+                    "displayName": "Guests"
+                  },
+                  {
+                    "fieldName": "price",
+                    "format": {
+                      "abbreviation": "none",
+                      "currencyCode": "USD",
+                      "decimalPlaces": {
+                        "places": 0,
+                        "type": "max"
+                      },
+                      "type": "number-currency"
+                    },
+                    "displayName": "Actual (USD)"
+                  },
+                  {
+                    "fieldName": "predicted_price",
+                    "format": {
+                      "abbreviation": "none",
+                      "currencyCode": "USD",
+                      "decimalPlaces": {
+                        "places": 0,
+                        "type": "max"
+                      },
+                      "type": "number-currency"
+                    },
+                    "displayName": "Predicted (USD)"
+                  },
+                  {
+                    "fieldName": "error",
+                    "format": {
+                      "abbreviation": "none",
+                      "decimalPlaces": {
+                        "places": 0,
+                        "type": "max"
+                      },
+                      "type": "number-plain"
+                    },
+                    "displayName": "Error (USD)"
+                  },
+                  {
+                    "fieldName": "price_flag"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 22,
+            "width": 6,
+            "height": 8
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
+}
