@@ -2,8 +2,8 @@
 
 | Role | City | Inside Airbnb slug | Snapshot date |
 |---|---|---|---|
-| City A (training) | New Orleans, LA | `new-orleans` | TODO (from `bronze_ingest_log`) |
-| City B (training) | Asheville, NC | `asheville` | TODO |
+| City A (training) | New Orleans, LA | `new-orleans` | 2026-09-16 |
+| City B (training) | Asheville, NC | `asheville` | 2026-09-19 |
 | City C (new client) | Nashville, TN | `nashville` | TODO (week 2) |
 
 Region: **US South**, currency **USD**. Data: [Inside Airbnb](https://insideairbnb.com/get-the-data/) `listings.csv.gz`, CC BY 4.0.

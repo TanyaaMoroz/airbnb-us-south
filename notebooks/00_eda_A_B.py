@@ -5,19 +5,32 @@
 # MAGIC Runs after `01_bronze_ingest` and `02_silver_clean` for both training cities. City C is not loaded here.
 # MAGIC
 # MAGIC ## Summary
-# MAGIC > **Fill in after running the notebook. Replace every TODO with a number or a finding.**
+# MAGIC > Numbers below come from a pandas check of the same snapshots; confirm them against the outputs of this notebook after the Databricks run.
 # MAGIC
 # MAGIC **What we now know**
-# MAGIC - Snapshots: New Orleans TODO, Asheville TODO. One row = one listing on the snapshot date; `id` is unique (section 1).
-# MAGIC - TODO % of listings have no price. Missing price is (not) random: it goes together with TODO (section 2).
-# MAGIC - Median price: New Orleans $TODO, Asheville $TODO; prices are right-skewed, so we model log price (section 3).
-# MAGIC - TODO % of listings require 30+ nights; TODO listings above the 99.5th percentile (section 4).
-# MAGIC - Leaks: `estimated_revenue_l365d` is price × estimated occupancy (verified: ratio ≈ TODO); `review_scores_value` is a judgement of price (section 6).
+# MAGIC - **Snapshots and grain.** New Orleans 2026-09-16 (7,263 listings, 3,208 hosts) and Asheville 2026-09-19 (2,865 listings, 1,730 hosts). One row = one listing on the snapshot date. `id` is unique: 0 duplicates, and no id appears in both cities (section 1).
+# MAGIC - **Missing prices are not random.** 14.8% (New Orleans) and 10.5% (Asheville) of listings have no price (section 2).
+# MAGIC   - Every listing without a price quote has no price (702 / 211), and almost all of these were carried over from a previous scrape.
+# MAGIC   - With an empty calendar (`availability_365 = 0`) the price is missing for 83.1% / 96.0%, against 7.0% / 4.2% for the rest.
+# MAGIC - **Review scores are missing exactly when a listing has 0 reviews** (1,209 / 232 listings, no exceptions). This is structural, not an error.
+# MAGIC - **Prices are skewed.** The median is $197 (New Orleans) and $225 (Asheville). Price skew is 15 / 16, but only 0.4 / 0.3 on log10, so we model log price (section 3).
+# MAGIC - **`price` is the per-night value of a quoted stay, not a list price.**
+# MAGIC   - The quote is for a specific check-in, a median of 3 days after the scrape.
+# MAGIC   - 48% / 23% of the quotes include a discount.
+# MAGIC   - For listings with `minimum_nights ≥ 30` it is a monthly rate per night: median $111 vs $247 for the rest in New Orleans, $101 vs $234 in Asheville.
+# MAGIC - **Monthly and extreme listings.** 40.0% (New Orleans) and 8.6% (Asheville) of listings require 30+ nights. 30 / 12 listings are above p99.5 ($2,003 / $2,067), and about 12 / 5 of those look like real large group houses. No price is below $10 (section 4).
+# MAGIC - **Leaks** (section 6):
+# MAGIC   - `estimated_revenue_l365d` is exactly price × `estimated_occupancy_l365d`: median ratio 1.000, 100% of 6,464 listings within ±1%.
+# MAGIC   - The undocumented `price_quote_price_per_night` is identical to `price`.
+# MAGIC   - `review_scores_value` barely correlates with price (Spearman 0.03). We exclude it as a precaution, not because the data shows a leak.
+# MAGIC - **Empty columns.** `host_since`, `instant_bookable`, `host_response_rate`, `host_acceptance_rate` and the numeric `bathrooms` are 100% empty in both snapshots. Bathrooms come from `bathrooms_text`. The features `host_years` and `instant_bookable` carry no information.
 # MAGIC
 # MAGIC **What we still do not know**
-# MAGIC - The advertised price is one night on one date, not what guests actually pay (no fees, no seasonality, no booked price).
-# MAGIC - Whether listings without a price are inactive, blocked, or simply not scraped.
-# MAGIC - How regulation (permits / licence rules in both cities) shapes which listings exist; we only see survivors.
+# MAGIC - What guests actually pay. The price is one quoted stay on one date, often discounted, with no fees, no seasonality and no booked price.
+# MAGIC - Why 277 (New Orleans) and 62 (Asheville) listings have an open calendar and an "available" quote but still no price. For the rest we cannot tell inactive, fully booked or blocked apart.
+# MAGIC - Whether unavailable days are booked or blocked by the host. The dictionary says it can be either, so availability and occupancy are not clean demand signals.
+# MAGIC - How regulation (permits / licence rules in both cities) shapes which listings exist. We only see survivors. In New Orleans the licence is empty for 42.7% of monthly listings vs 1.8% of the rest.
+# MAGIC - The real size of large group houses: `accommodates` is capped at 16.
 # MAGIC - Whether the price–feature relationships learned here hold in a third city.
 
 # COMMAND ----------
@@ -82,6 +95,39 @@ display(pdf.groupby(["city", "room_type"])[["bedrooms", "beds", "bathrooms"]].ap
 
 # COMMAND ----------
 
+# Pattern 1b: was a price quote attempted at all? `source` and `price_quote_*` are only in bronze.
+bcols = [c for c in ["source", "price_quote_checkin_date"] if c in spark.table(T("bronze_listings")).columns]
+qb = (spark.table(T("bronze_listings")).where(F.col("city").isin(TRAIN_CITIES))
+      .select("city", F.trim("id").alias("id"), *bcols).toPandas())
+q = pdf[["city", "id", "price_missing", "avail_zero"]].merge(qb, on=["city", "id"], how="left")
+if "source" in q:
+    q["source"] = q.source.fillna("<empty>")
+    display(pd.crosstab([q.city, q.source], q.price_missing, normalize="index").round(3).reset_index())
+if "price_quote_checkin_date" in q:
+    q["quote_attempted"] = q.price_quote_checkin_date.notna()
+    display(pd.crosstab([q.city, q.quote_attempted], q.price_missing).reset_index())
+
+# Pattern 4: minimum_nights is missing only when the calendar is empty
+display(pd.crosstab([pdf.city, pdf.minimum_nights.isna()], pdf.availability_365 == 0).reset_index())
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Missing values: what goes with them and why
+# MAGIC | column | % missing NO / AVL | pattern | most likely explanation | evidence | what the pipeline does |
+# MAGIC |---|---|---|---|---|---|
+# MAGIC | `price` | 14.8 / 10.5 | 100% missing when no price quote was attempted (702 / 211), 699 / 211 of those are `source = previous scrape`; 83.1% / 96.0% missing when `availability_365 = 0` vs 7.0% / 4.2% otherwise; ~98–100% when the quote says not available | listings carried over from an earlier scrape, mostly with an empty calendar, get no new quote and so no price | strong for the no-quote group; 277 / 62 listings with an open calendar and an available quote are unexplained | `price_flag = 'missing'`: kept for counts, excluded from fit and evaluation |
+# MAGIC | review scores, `first_review`, `last_review`, `reviews_per_month`, `days_since_last_review` | 16.6 / 8.1 | missing ⇔ `number_of_reviews = 0` (1,209 / 232, no exceptions) | nothing to score yet: structural | exact | kept null; imputed in the model |
+# MAGIC | `beds` | 3.0 / 1.5 | 169 of 221 New Orleans cases are "Room in hotel"; 12.9% of New Orleans private rooms | hotel / room listings leave beds empty | moderate | imputed |
+# MAGIC | `bathrooms` (after text fallback) | 1.4 / 0.0 | all 105 New Orleans cases are hotel rooms with empty `bathrooms_text`; the numeric `bathrooms` column is 100% empty | hotels leave it empty | strong | parsed from `bathrooms_text` |
+# MAGIC | `minimum_nights`, `maximum_nights` | 1.9 / 0.3 | all 137 / 8 have `availability_365 = 0`, yet 126 / 8 have a price | no calendar → no calendar-based stay rules | strong | `is_monthly` becomes null; imputed |
+# MAGIC | `has_availability` | 0.6 / 0.5 | all 47 / 14 have no price | same no-quote group | strong | null |
+# MAGIC | `estimated_revenue_l365d` | 14.8 / 10.5 | missing exactly when price is missing | computed from price | exact | not a feature (leak) |
+# MAGIC | `license` | 20.0 / 100 | New Orleans: 42.7% missing for monthly listings vs 1.8% for the rest; 220 "Exempt" | Asheville: not published; New Orleans: monthly rentals likely outside the short-term permit regime (hypothesis, only the correlation is shown) | moderate | not used |
+# MAGIC | `host_since`, `instant_bookable`, `host_response_rate`, `host_acceptance_rate` | 100 / 100 | every row | not populated in this Inside Airbnb release | certain | `host_years` and `instant_bookable` are all-null features: to fix in `common.py` |
+
+# COMMAND ----------
+
 # MAGIC %md ## 3. Distributions of price and availability
 
 # COMMAND ----------
@@ -119,9 +165,15 @@ display(pdf.groupby(["city", "room_type", "accommodates"]).price.agg(["median", 
 # COMMAND ----------
 
 display(pd.crosstab([pdf.city, pdf.price_flag], pdf.is_monthly).reset_index())
-display(pdf[pdf.price_flag == "extreme_high"][["city", "name", "room_type", "accommodates", "bedrooms",
-                                                "price", "minimum_nights", "availability_365", "number_of_reviews"]]
-        .sort_values("price", ascending=False).head(30))
+# 30 most expensive priced listings per city (not only extreme_high), with price per guest to judge them
+top = pdf[pdf.price.notna()].assign(price_per_guest=lambda d: (d.price / d.accommodates).round(1))
+display(top.sort_values("price", ascending=False).groupby("city").head(30)
+        [["city", "id", "name", "room_type", "accommodates", "bedrooms", "price", "price_per_guest",
+          "minimum_nights", "availability_365", "number_of_reviews", "price_flag"]]
+        .sort_values(["city", "price"], ascending=[True, False]))
+
+# Two price scales: listings with minimum_nights >= 30 are quoted at a monthly rate per night
+display(pdf.groupby(["city", "is_monthly"]).price.agg(["size", "median"]).round(1).reset_index())
 
 # Within-group outliers: log price outside 1.5×IQR of its city × room type
 g = pdf.dropna(subset=["log_price"]).groupby(["city", "room_type"]).log_price
@@ -130,6 +182,30 @@ iqr_lo, iqr_hi = g.transform(lambda s: s.quantile(.25) - 1.5 * (s.quantile(.75) 
 lp = pdf.dropna(subset=["log_price"])
 print("share outside IQR fences per city:",
       ((lp.log_price < iqr_lo) | (lp.log_price > iqr_hi)).groupby(lp.city).mean().round(3).to_dict())
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Are the most expensive prices real? Verdict on the silver rules
+# MAGIC **Top 30 per city.** I reviewed them by hand, using price per guest, reviews, minimum nights and capacity as the main signals.
+# MAGIC - New Orleans: about 13 look like garbage or not a nightly price, 10 look real, 7 are unclear. All 30 are `extreme_high` (p99.5 = $2,003).
+# MAGIC - Asheville: 5 look like garbage, 15 look real, 10 are unclear. 12 are `extreme_high` (p99.5 = $2,067).
+# MAGIC
+# MAGIC **Garbage or not a nightly price:**
+# MAGIC - New Orleans "Sweet White Penthouse": 4 guests, $8,182/night, 30-night minimum, a monthly-priced quote.
+# MAGIC - Two Uptown units: 6 guests, $4,883 each, 30-night minimum.
+# MAGIC - New Orleans "Royal Street Hotel Room": 2 guests, $4,764, 0 reviews.
+# MAGIC - Asheville "Massive 4 bedroom home": $11,680, 0 reviews.
+# MAGIC
+# MAGIC **Real:** whole-property group rentals with reviews and ≤ $250 per guest. Examples: "Burgundy Cottages" (18 bedrooms, $3,897) and Asheville "Secluded MtnTop Luxe" (16 guests, $2,251, 98 reviews).
+# MAGIC
+# MAGIC **Passes the rule but looks wrong:** Asheville "Edge of West" (2 guests, $2,000, `ok`).
+# MAGIC
+# MAGIC | rule | New Orleans | Asheville | verdict |
+# MAGIC |---|---|---|---|
+# MAGIC | `too_low` (< $10) | 0 rows (min $20) | 0 rows (min $22) | harmless, never fires; keep it as a guard for a new city |
+# MAGIC | `extreme_high` (> p99.5) | 30 rows; ~12 look real (≥ 8 guests or ≥ 4 bedrooms, with reviews); 6 are monthly-priced | 12 rows; ~5 look real | reasonable as a fit exclusion (0.5% of rows). It mixes real group houses with junk, and it lets small listings at ~$2,000 through. Report `mae_*_ok` next to the full MAE |
+# MAGIC | `is_monthly` (min nights ≥ 30) | 2,908 rows (40.0%), 2,024 priced; 32.8% of the fitting rows | 245 rows (8.6%), 165 priced; 6.5% of the fitting rows | the flag is right, but these prices are a monthly rate per night (median $111 vs $247). The baseline (room type × guests) cannot see this. Fit/evaluate nightly listings separately, or at least report MAE for each group |
 
 # COMMAND ----------
 
@@ -178,3 +254,15 @@ print("revenue / (price × occupancy): median", round(ratio.median(), 3), "| sha
 num = pdf.select_dtypes("number").drop(columns=["price", "log_price"], errors="ignore")
 corr = num.corrwith(pdf.log_price, method="spearman").dropna().sort_values(key=np.abs, ascending=False)
 display(corr.round(3).rename("spearman_vs_log_price").reset_index().rename(columns={"index": "column"}))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Leakage review: results
+# MAGIC - **Revenue leak, confirmed exactly.** `estimated_revenue_l365d / (price × estimated_occupancy_l365d)` has median 1.000, and 100% of 6,464 listings with occupancy > 0 are within ±1%. Revenue is also missing exactly when price is missing.
+# MAGIC   - Its Spearman correlation with log price is only 0.44, because occupancy varies. **A correlation table alone would not have caught this leak**: it is a leak by construction.
+# MAGIC - **Undocumented copies of the price.** `price_quote_price_per_night` = `price` in 100% of rows (Spearman 1.000), and `price_quote_total_price` = price × quoted nights. Silver does not read them. They must never be selected as features.
+# MAGIC - **No other column has |rho| > 0.8 with log price.** The strongest are the physical size columns: accommodates 0.63, bedrooms 0.61, bathrooms 0.60, beds 0.60. Next come `is_monthly` −0.45 and `minimum_nights` −0.33, which reflect the monthly price definition, not leakage.
+# MAGIC - **`number_of_reviews_ltm` (a feature)** has Spearman 0.955 with `estimated_occupancy_l365d`, which we exclude because booking volume partly results from price. Keeping one and excluding the other is inconsistent; the model owner decides.
+# MAGIC - **`review_scores_value`** has Spearman 0.03 with log price. We keep it excluded as a precaution.
+# MAGIC - **`host_years` and `instant_bookable`** are 100% null in both snapshots. The undocumented `hosts_time_as_host_years` (0% missing) could replace `host_years`.
