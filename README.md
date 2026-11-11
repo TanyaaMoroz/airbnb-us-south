@@ -65,12 +65,12 @@ Week 2 only: create **Job 3** and run it with `city=nashville`, `model_alias=wee
 - Split: deterministic 80/20 by hash of listing `id`, per listing, fixed in gold before any modelling.
 - Baseline: median training price by `room_type × accommodates` (fallback: room type, then global).
 - Model choice: 5-fold CV on training rows among Ridge and gradient boosting variants; evaluated once on test.
-- Features: size (accommodates, bedrooms, beds, bathrooms, shared bath), distance to city centre, minimum nights, amenities, host, reviews, room and property type. Excluded for leakage: `estimated_revenue_l365d`, `review_scores_value`, availability, estimated occupancy (see EDA §6).
+- Features: size (accommodates, bedrooms, beds, bathrooms, shared bath), distance to city centre, minimum nights, amenities, host, reviews, room and property type. Excluded for leakage: `estimated_revenue_l365d`, `review_scores_value`, availability, estimated occupancy (see EDA §6). host_since / instant_bookable are present but empty in these snapshots, so excluded.
 
 | Test-set MAE (USD) | New Orleans | Asheville | A + B |
 |---|---|---|---|
-| Baseline | TODO | TODO | TODO |
-| Model | TODO | TODO | TODO |
+| Baseline | 117 | 120 | 118 |
+| Model | 80 | 87 | 82 |
 
 ## City C report (week 2)
 
