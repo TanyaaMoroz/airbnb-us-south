@@ -72,7 +72,7 @@ notebooks/
   07_city_c_model_change.py  city C model changes, evaluated on held-out 20% (param: city)
 jobs/jobs.yml                Job 1 per-city pipeline, Job 2 week-1 run
 jobs/job3_new_city.yml       Job 3 for a new city (default city = nashville)
-docs/                        dashboard queries, Genie setup, week-2 runbook
+docs/                        dashboard export + queries, Genie setup, column cheat-sheet, week-2 runbook
 ```
 
 ## How to run
@@ -155,7 +155,10 @@ The error for a listing of a given size is similar across cities — large listi
 
 ## Dashboard and Genie
 
-- AI/BI dashboard: [link](https://dbc-58a977cc-a9a9.cloud.databricks.com/dashboardsv3/01f1de099d101a12917f41bc93d72c36/published?o=7474650486058939). Queries: `docs/dashboard_queries.sql`.
+- AI/BI dashboard: [link](https://dbc-58a977cc-a9a9.cloud.databricks.com/dashboardsv3/01f1de099d101a12917f41bc93d72c36/published?o=7474650486058939). Definition: `docs/dashboard.lvdash.json` (Dashboards -> Create -> Import to rebuild it); SQL of every dataset: `docs/dashboard_queries.sql`.
+  1. **City overview** — listings, median price, availability, review scores, hosts, room-type mix and neighbourhoods for the selected city.
+  2. **Cross-city: New Orleans vs Asheville** — Asheville is about $28 a night pricier ($225 vs $197 median), but 40.8% of New Orleans listings are 30+ night rentals vs 8.6% in Asheville.
+  3. **Model** — the four MAE numbers, predicted vs actual, error by room type and neighbourhood, and the most under- and over-priced listings. The `run_label` filter switches between `week1`, `c_first_run` and `c_after_fix` (Nashville). `error = predicted_price - price`, so negative means the model under-prices.
 - Genie agent: TODO link — setup and example questions: `docs/genie_setup.md`.
 
 ## Presentation
