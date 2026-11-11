@@ -74,6 +74,13 @@ Week 2 only: create **Job 3** and run it with `city=nashville`, `model_alias=wee
 
 ## City C report (week 2)
 
+**What we expect to break (written before the first run, from what we know about A and B only):**
+- Listings larger than anything in training (more guests than the training maximum): the model cannot extrapolate prices for them.
+- A different price level: if the new city is pricier, the model will under-price systematically.
+- `minimum_nights` is the 2nd most important feature and is shaped by local rental rules; a different mix of 30+ night rentals changes what it means.
+- Property types that were rare or absent in training fall into one "infrequent" group.
+- Column types may differ (e.g. a column with missing values becomes decimal instead of integer) and break the table write.
+  
 | | MAE (USD) |
 |---|---|
 | Baseline on city C | TODO |
