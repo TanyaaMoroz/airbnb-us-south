@@ -1,0 +1,98 @@
+# Create each job in Jobs & Pipelines -> Create job -> (⋮) Edit as YAML, one block at a time.
+# Replace <REPO> with your Git folder path, e.g. /Workspace/Users/you@uni.edu/airbnb-roalda
+# Databricks Free Edition uses serverless compute automatically.
+
+# ---------------------------------------------------------------------------
+# Job 1: the per-city pipeline. ONE definition; the city is a parameter.
+# ---------------------------------------------------------------------------
+resources:
+  jobs:
+    airbnb_city_pipeline:
+      name: airbnb_city_pipeline
+      max_concurrent_runs: 1
+      parameters:
+        - name: city
+          default: new-orleans
+        - name: snapshot_date        # empty = latest on Inside Airbnb
+          default: ""
+        - name: download             # "false" = use a file uploaded to the raw volume
+          default: "true"
+      tasks:
+        - task_key: bronze
+          notebook_task:
+            notebook_path: <REPO>/notebooks/01_bronze_ingest
+        - task_key: silver
+          depends_on: [{task_key: bronze}]
+          notebook_task:
+            notebook_path: <REPO>/notebooks/02_silver_clean
+        - task_key: gold
+          depends_on: [{task_key: silver}]
+          notebook_task:
+            notebook_path: <REPO>/notebooks/03_gold_city
+
+# ---------------------------------------------------------------------------
+# Job 2: week 1 end to end. Loops the SAME city pipeline over A and B,
+# trains on both, then scores both. Create Job 1 first and put its job id below.
+# ---------------------------------------------------------------------------
+# resources:
+#   jobs:
+#     airbnb_train_week1:
+#       name: airbnb_train_week1
+#       parameters:
+#         - name: cities
+#           default: '["new-orleans","asheville"]'
+#         - name: run_label
+#           default: week1
+#       tasks:
+#         - task_key: each_city_pipeline
+#           for_each_task:
+#             inputs: "{{job.parameters.cities}}"
+#             concurrency: 1          # sequential: two runs must not create the same table at once
+#             task:
+#               task_key: city_pipeline_iteration
+#               run_job_task:
+#                 job_id: <JOB_1_ID>
+#                 job_parameters:
+#                   city: "{{input}}"
+#         - task_key: train
+#           depends_on: [{task_key: each_city_pipeline}]
+#           notebook_task:
+#             notebook_path: <REPO>/notebooks/04_train_model
+#         - task_key: each_city_score
+#           depends_on: [{task_key: train}]
+#           for_each_task:
+#             inputs: "{{job.parameters.cities}}"
+#             concurrency: 1
+#             task:
+#               task_key: score_iteration
+#               notebook_task:
+#                 notebook_path: <REPO>/notebooks/05_score_city
+#                 base_parameters:
+#                   city: "{{input}}"
+#                   model_alias: champion
+
+# ---------------------------------------------------------------------------
+# Job 3: a new client city (week 2 only). Same pipeline, frozen week-1 model, no training.
+# First run on city C: city=<slug>, model_alias=week1, run_label=c_first_run
+# ---------------------------------------------------------------------------
+# resources:
+#   jobs:
+#     airbnb_new_city:
+#       name: airbnb_new_city
+#       parameters:
+#         - name: city
+#           default: ""
+#         - name: model_alias
+#           default: week1
+#         - name: run_label
+#           default: c_first_run
+#       tasks:
+#         - task_key: city_pipeline
+#           run_job_task:
+#             job_id: <JOB_1_ID>
+#             job_parameters:
+#               city: "{{job.parameters.city}}"
+#         - task_key: score
+#           depends_on: [{task_key: city_pipeline}]
+#           notebook_task:
+#             notebook_path: <REPO>/notebooks/05_score_city
